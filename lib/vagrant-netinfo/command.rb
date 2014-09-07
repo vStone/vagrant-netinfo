@@ -17,12 +17,26 @@ module VagrantPlugins
         argv = parse_options(opts)
         return if !argv
 
+        columns = {
+          :nic_id => 'nic id',
+          :protocol => 'protocol',
+          :guest  => 'guest',
+          :host   => 'host',
+        }
+        widths = {
+          :nic_id => columns[:nic_id].length + 1,
+          :protocol => columns[:protocol].length + 1,
+          :guest  => columns[:guest].length + 1,
+          :host   => columns[:host].length + 1
+        }
+
         results = []
         uuid = nil
 
         with_target_vms(argv) do |machine|
           current_nic = nil
           uuid = machine.id
+          machine_results = []
 
           # Only active VMS pls.
           if !machine.communicate.ready?
@@ -36,7 +50,10 @@ module VagrantPlugins
             info.split("\n").each do |line|
               current_nic = $1.to_i if line =~ /^nic(\d+)=".+?"$/
               if line =~ /^Forwarding.+?="(.+?),(.+?),(.*?),(.+?),(.*?),(.+?)"$/
-                results << {
+                widths[:nic_id] = current_nic.to_s.length if current_nic.to_s.length > widths[:nic_id]
+                widths[:host] = "#{$3.to_s}:#{$4.to_s}".length if "#{$3.to_s}:#{$4.to_s}".length > widths[:host]
+                widths[:guest] =  "#{$5.to_s}:#{$6.to_s}".length if "#{$5.to_s}:#{$6.to_s}".length > widths[:guest]
+                machine_results << {
                   :nic_id     => current_nic,
                   :name       => $1.to_s,
                   :protocol   => $2.to_s,
@@ -49,6 +66,17 @@ module VagrantPlugins
             end
           else
             raise Vagrant::Errors::ProviderNotUsable
+          end
+
+          results << {
+            :machine       => machine.name.to_s,
+            :provider      => machine.provider_name.to_s,
+            :port_forwards => machine_results
+          }
+        end
+
+        results.each do |machine|
+          machine[:port_forwards].each do |fwd|
           end
         end
         ap results, indent: -2
