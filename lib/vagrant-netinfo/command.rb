@@ -17,17 +17,14 @@ module VagrantPlugins
         argv = parse_options(opts)
         return if !argv
 
-        columns = {
-          :nic_id => 'nic id',
-          :protocol => 'protocol',
-          :guest  => 'guest',
-          :host   => 'host',
-        }
         widths = {
-          :nic_id => columns[:nic_id].length + 1,
-          :protocol => columns[:protocol].length + 1,
-          :guest  => columns[:guest].length + 1,
-          :host   => columns[:host].length + 1
+          :nic_id => 'nic'.length + 1,
+          :protocol => 10,
+          :guest_ip => 10,
+          :guest_port => 5,
+          :host_ip => 10,
+          :host_port => 5,
+          :name => 10,
         }
 
         results = []
@@ -50,9 +47,16 @@ module VagrantPlugins
             info.split("\n").each do |line|
               current_nic = $1.to_i if line =~ /^nic(\d+)=".+?"$/
               if line =~ /^Forwarding.+?="(.+?),(.+?),(.*?),(.+?),(.*?),(.+?)"$/
-                widths[:nic_id] = current_nic.to_s.length if current_nic.to_s.length > widths[:nic_id]
-                widths[:host] = "#{$3.to_s}:#{$4.to_s}".length if "#{$3.to_s}:#{$4.to_s}".length > widths[:host]
-                widths[:guest] =  "#{$5.to_s}:#{$6.to_s}".length if "#{$5.to_s}:#{$6.to_s}".length > widths[:guest]
+                widths[:nic_id] = "nic: #{current_nic.to_s}".length if "nic: #{current_nic.to_s}".length > widths[:nic_id]
+
+                widths[:host_ip] = $3.to_s.length if $3.to_s.length > widths[:host_ip]
+                widths[:host_port] = $4.to_s.length if $4.to_s.length > widths[:host_port]
+
+                widths[:guest_ip] = $5.to_s.length if $5.to_s.length > widths[:guest_ip]
+                widths[:guest_port] = $6.to_s.length if $6.to_s.length > widths[:guest_port]
+
+                widths[:name] = $1.to_s.length if $1.to_s.length > widths[:name]
+
                 machine_results << {
                   :nic_id     => current_nic,
                   :name       => $1.to_s,
@@ -69,17 +73,42 @@ module VagrantPlugins
           end
 
           results << {
-            :machine       => machine.name.to_s,
+            :name          => machine.name.to_s,
             :provider      => machine.provider_name.to_s,
             :port_forwards => machine_results
           }
         end
 
+        header = [ ' '.ljust(widths[:nic_id]), 'guest ip'.rjust(widths[:guest_ip]), ':', 'port'.ljust(widths[:guest_port]),
+          '    ',
+          'host ip'.rjust(widths[:host_ip]),':', 'port'.ljust(widths[:host_port]),
+          'protocol'.rjust(widths[:protocol]),
+          'name'.rjust(widths[:name])
+        ]
+
         results.each do |machine|
+          @env.ui.info("Machine '#{machine[:name].to_s}' (#{machine[:provider]})")
+          @env.ui.info(header.join(""))
+          @env.ui.info('-' * header.join("").length)
           machine[:port_forwards].each do |fwd|
+            line = []
+            line << [ "nic[#{fwd[:nic_id]}]".ljust(widths[:nic_id]) ]
+            line << [ fwd[:guest_ip].rjust(widths[:guest_ip]), ':', fwd[:guest_port].ljust(widths[:guest_port]) ]
+            line << [ ' -> ' ]
+            line << [ fwd[:host_ip].rjust(widths[:host_ip]), ':', fwd[:host_port].ljust(widths[:host_port]) ]
+            line << [ fwd[:protocol].rjust(widths[:protocol]) ]
+            line << [ fwd[:name].rjust(widths[:name]) ]
+            opts = {}
+            if fwd[:name] == 'ssh'
+              opts[:color] = :yellow
+            elsif fwd[:name] != "#{fwd[:protocol]}#{fwd[:host_port]}"
+              opts[:color] = :red
+            end
+
+            @env.ui.info(line.join(""), opts)
           end
+          @env.ui.info("")
         end
-        ap results, indent: -2
         0
       end
     end
